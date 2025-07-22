@@ -38,6 +38,144 @@ function getTimestamp(): string {
   return now.toISOString()
 }
 
+/**
+ * Creates a fetch wrapper that handles .well-known/oauth-authorization-server responses
+ * @param url The URL to fetch
+ * @param init Optional RequestInit object
+ * @returns Promise<Response> with potential modifications for .well-known/oauth-authorization-server responses
+ */
+export async function createFetchWrapper(url: string | URL, init?: RequestInit): Promise<Response> {
+
+  log('createFetchWrapper calling with URL:', url.toString())
+
+  // If the URL is .well-known/oauth-authorization-server, return mock OAuth authorization server metadata
+  if (url.toString().includes('.well-known/oauth-authorization-server')) {
+    log('createFetchWrapper returning mock OAuth authorization server metadata')
+
+    const mockResponseBody = {
+      "issuer": "https://login.salesforce.com",
+      "authorization_endpoint": "https://login.salesforce.com/services/oauth2/authorize",
+      "token_endpoint": "https://login.salesforce.com/services/oauth2/token",
+      "revocation_endpoint": "https://login.salesforce.com/services/oauth2/revoke",
+      "userinfo_endpoint": "https://login.salesforce.com/services/oauth2/userinfo",
+      "jwks_uri": "https://login.salesforce.com/id/keys",
+      "registration_endpoint": "https://login.salesforce.com/services/oauth2/register",
+      "introspection_endpoint": "https://login.salesforce.com/services/oauth2/introspect",
+      "scopes_supported": [
+        "cdp_ingest_api",
+        "custom_permissions",
+        "cdp_segment_api",
+        "content",
+        "cdp_api",
+        "chatbot_api",
+        "cdp_identityresolution_api",
+        "interaction_api",
+        "wave_api",
+        "web",
+        "cdp_calculated_insight_api",
+        "einstein_gpt_api",
+        "offline_access",
+        "id",
+        "api",
+        "eclair_api",
+        "email",
+        "pardot_api",
+        "lightning",
+        "visualforce",
+        "cdp_query_api",
+        "sfap_api",
+        "address",
+        "openid",
+        "profile",
+        "cdp_profile_api",
+        "refresh_token",
+        "phone",
+        "user_registration_api",
+        "pwdless_login_api",
+        "chatter_api",
+        "full",
+        "forgot_password"
+      ],
+      "response_types_supported": [
+        "code",
+        "token",
+        "token id_token"
+      ],
+      "subject_types_supported": [
+        "public"
+      ],
+      "id_token_signing_alg_values_supported": [
+        "RS256"
+      ],
+      "display_values_supported": [
+        "page",
+        "popup",
+        "touch"
+      ],
+      "token_endpoint_auth_methods_supported": [
+        "client_secret_post",
+        "client_secret_basic",
+        "private_key_jwt"
+      ],
+      "claims_supported": [
+        "active",
+        "address",
+        "email",
+        "email_verified",
+        "family_name",
+        "given_name",
+        "is_app_installed",
+        "language",
+        "locale",
+        "name",
+        "nickname",
+        "organization_id",
+        "phone_number",
+        "phone_number_verified",
+        "photos",
+        "picture",
+        "preferred_username",
+        "profile",
+        "sub",
+        "updated_at",
+        "urls",
+        "user_id",
+        "user_type",
+        "zoneinfo"
+      ],
+      "code_challenge_methods_supported": [
+        "plain",
+        "S256"
+      ],
+      "grant_types_supported": [
+        "authorization_code", 
+        "refresh_token"
+      ]
+    }
+
+    return new Response(JSON.stringify(mockResponseBody, null, 2), {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    })
+  }
+
+  // If the URL is not .well-known/oauth-authorization-server, delegate to actual fetch function and return original response
+  let response: Response
+  try {
+    log('createFetchWrapper delegating to actual fetch function and returning original response')
+    response = await fetch(url, init)
+  } catch (error) {
+    log('createFetchWrapper fetch error:', error)
+    debugLog('createFetchWrapper fetch error', { error: error instanceof Error ? error.message : String(error) })
+    throw error
+  }
+  return response
+}
+
 // Debug logging function
 export function debugLog(message: string, ...args: any[]) {
   if (!DEBUG) return
@@ -228,6 +366,7 @@ export async function connectToRemoteServer(
     : new StreamableHTTPClientTransport(url, {
         authProvider,
         requestInit: { headers },
+        fetch: createFetchWrapper
       })
 
   try {
@@ -245,7 +384,7 @@ export async function connectToRemoteServer(
         // the client is already connected. So let's just create a one-off client to make a single request and figure
         // out if we're actually talking to an HTTP server or not.
         if (DEBUG) debugLog('Creating test transport for HTTP-only connection test')
-        const testTransport = new StreamableHTTPClientTransport(url, { authProvider, requestInit: { headers } })
+        const testTransport = new StreamableHTTPClientTransport(url, { authProvider, requestInit: { headers }, fetch: createFetchWrapper })
         const testClient = new Client({ name: 'mcp-remote-fallback-test', version: '0.0.0' }, { capabilities: {} })
         await testClient.connect(testTransport)
       }
